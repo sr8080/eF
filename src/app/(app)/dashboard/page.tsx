@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Camera, CircleCheck, Trophy, UserRound } from "lucide-react";
+import { Camera, CircleCheck, Link2, Plus, Trophy, UserRound } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { getUserLeagues } from "@/lib/leagues";
 import { EmptyState, PageContainer, PageHeader } from "@/components/layout/page-header";
 import { FormAlert } from "@/components/forms/form-fields";
+import { LeagueCard } from "@/components/leagues/league-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user/user-avatar";
@@ -22,11 +24,17 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
 }
 
 async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard">["searchParams"] }) {
-  const [{ profile }, params] = await Promise.all([requireUser("/dashboard"), searchParams]);
+  const [{ profile }, leagues, params] = await Promise.all([
+    requireUser("/dashboard"),
+    getUserLeagues(),
+    searchParams,
+  ]);
   const firstName = profile.display_name.split(" ")[0];
+  const visibleLeagues = leagues.slice(0, 5);
 
   const checklist = [
     { done: true, label: "Create your account", href: null, icon: UserRound },
+    { done: leagues.length > 0, label: "Create or join a league", href: "/leagues", icon: Trophy },
     { done: Boolean(profile.avatar_url), label: "Add a profile picture", href: "/settings", icon: Camera },
   ];
 
@@ -42,21 +50,64 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
         eyebrow="Dashboard"
         title={`Welcome back, ${firstName}`}
         description="Your leagues, fixtures and results in one place."
+        actions={
+          <>
+            <Button asChild variant="outline" className="min-h-11 sm:min-h-9">
+              <Link href="/join">
+                <Link2 /> Join with code
+              </Link>
+            </Button>
+            <Button asChild className="min-h-11 sm:min-h-9">
+              <Link href="/leagues/new">
+                <Plus /> Create league
+              </Link>
+            </Button>
+          </>
+        }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <section className="lg:col-span-2" aria-labelledby="leagues-heading">
-          <h2 id="leagues-heading" className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Your leagues
-          </h2>
-          <EmptyState
-            icon={<Trophy />}
-            title="You’re not in a league yet"
-            description="Once leagues are set up, the ones you play in will show here with your position, upcoming fixtures and recent results."
-          />
+          <div className="mb-3 flex items-center justify-between">
+            <h2
+              id="leagues-heading"
+              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+              Your leagues
+            </h2>
+            {leagues.length > 0 && (
+              <Link href="/leagues" className="text-xs font-medium text-info hover:underline">
+                View all ({leagues.length})
+              </Link>
+            )}
+          </div>
+
+          {leagues.length === 0 ? (
+            <EmptyState
+              icon={<Trophy />}
+              title="You’re not in a league yet"
+              description="Create a league for your crew or join one using an invite code."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button asChild>
+                    <Link href="/leagues/new">Create league</Link>
+                  </Button>
+                  <Button asChild variant="outline">
+                    <Link href="/join">Join with code</Link>
+                  </Button>
+                </div>
+              }
+            />
+          ) : (
+            <div className="space-y-3">
+              {visibleLeagues.map((item) => (
+                <LeagueCard key={item.league.id} item={item} />
+              ))}
+            </div>
+          )}
         </section>
 
-        <section aria-labelledby="profile-heading" className="rounded-xl border bg-card p-4">
+        <section aria-labelledby="profile-heading" className="h-fit rounded-xl border bg-card p-4">
           <h2 id="profile-heading" className="sr-only">
             Your profile
           </h2>
@@ -81,7 +132,9 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
                     {item.label}
                   </Link>
                 ) : (
-                  <span className={item.done ? "text-muted-foreground line-through" : ""}>{item.label}</span>
+                  <span className={item.done ? "text-muted-foreground line-through" : ""}>
+                    {item.label}
+                  </span>
                 )}
               </li>
             ))}

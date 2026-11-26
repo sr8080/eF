@@ -25,14 +25,25 @@
 ### Principles
 
 - **The database is the authority.** Every rule that matters (who can submit, who can
-  confirm, roles) is enforced by RLS policies or Postgres functions. UI checks only
-  improve the experience.
+  confirm, roles, archive read-only locks) is enforced by RLS policies or Postgres
+  functions. UI checks only improve the experience.
+- **Non-recursive RLS via `SECURITY DEFINER` helpers.** Policies on `leagues`,
+  `league_members` and league-scoped tables call `is_league_member(league_id)`,
+  `league_role(league_id)`, `is_league_manager(league_id)` and
+  `is_league_archived(league_id)` (`set search_path = ''`) so membership checks never
+  recurse.
+- **Atomic league operations.** `create_league`, `get_league_invite_preview` (anon-safe,
+  leaks no member identities), `join_league_by_code`, `regenerate_invite_code`,
+  `set_member_role`, `remove_member`, `leave_league`, `transfer_ownership`,
+  `archive_league` and `unarchive_league` execute in Postgres with authorization
+  enforced inside SQL.
 - **Mutations go through Server Actions** that validate with the same Zod schema the
   client form uses (`src/lib/validations/*`). One schema, two enforcement points.
 - **Result lifecycle changes go through Postgres functions** (`submit_match_result`,
-  `confirm_match_result`, `dispute_match_result`, `resolve_dispute`). They run in a
-  single transaction, write the audit trail, and create notifications. Clients have no
-  direct UPDATE access to `matches.status` or official scores.
+  `confirm_match_result`, `dispute_match_result`, `resolve_dispute`, added in Phase 5).
+  They run in a single transaction, write the audit trail, and create notifications.
+  Clients have no direct INSERT/UPDATE/DELETE access to `matches.status`,
+  `match_results`, or `achievements`.
 - **Standings are derived, never stored as truth.** A SQL view
   (`season_standings`) computes the table from `Confirmed` matches. Head-to-head
   tie-breaks are applied in TypeScript (`src/lib/standings.ts`) because they depend on
@@ -41,9 +52,8 @@
   interface. With no key configured, the `none` provider returns `null` and the user
   types the score. Extracted values only pre-fill a form; nothing reaches standings
   without opponent confirmation.
-- **Service-role key is never used in the browser.** It is only read in server-only
-  modules (guarded with `import "server-only"`) and only where RLS cannot express the
-  operation (e.g. none in Phase 1).
+- **Service-role key is never used in the browser.** It is not required at all in
+  Phases 1–2; all data access uses the caller's session with RLS.
 
 ## 2. Folder structure
 
@@ -58,14 +68,14 @@
 │  │  ├─ (marketing)/         public landing page
 │  │  ├─ (auth)/              login, register, forgot/reset password
 │  │  ├─ auth/                callback + confirm route handlers
-│  │  ├─ join/[code]/         public join-by-invite page (redirects to login if needed)
+│  │  ├─ join/               /join code entry + /join/[code] public invite preview
 │  │  └─ (app)/               authenticated shell (sidebar + bottom nav)
 │  │     ├─ dashboard/
 │  │     ├─ leagues/
 │  │     │  ├─ new/
-│  │     │  └─ [leagueId]/    overview, participants, seasons, fixtures, standings,
-│  │     │                    stats, gallery, settings, matches/[matchId]
-│  │     ├─ matches/          my matches, submit result
+│  │     │  └─ [leagueId]/    overview, participants, settings (seasons, fixtures,
+│  │     │                    standings, stats, gallery, matches/[matchId] planned)
+│  │     ├─ matches/          my matches, submit result (planned)
 │  │     ├─ players/[userId]/
 │  │     ├─ notifications/
 │  │     └─ settings/         profile, avatar, password
@@ -73,14 +83,15 @@
 │  │  ├─ ui/                  shadcn/ui primitives
 │  │  ├─ layout/              app shell, sidebar, bottom nav, page header
 │  │  ├─ brand/               logo
-│  │  └─ <feature>/           league, match, standings ... feature components
+│  │  └─ <feature>/           auth, settings, leagues ... feature components
 │  ├─ lib/
 │  │  ├─ supabase/            server / browser / proxy clients
 │  │  ├─ validations/         Zod schemas shared by forms and actions
 │  │  ├─ actions/             server actions grouped by domain
+│  │  ├─ leagues.ts           cached league data access helpers
 │  │  ├─ ai/                  screenshot extractor interface + providers
 │  │  └─ utils.ts
-│  ├─ types/database.ts       generated Supabase types
+│  ├─ types/database.ts       hand-maintained / generated Supabase types
 │  └─ proxy.ts                session refresh + route protection
 └─ .env.example
 ```
@@ -89,17 +100,17 @@
 
 ```
 auth.users 1─1 profiles
-profiles   1─* leagues (owner_id)
-leagues    1─* league_members *─1 profiles        role: owner | admin | player
-leagues    1─* seasons                            status: draft | active | completed | archived
+profiles   1─* leagues (owner_id)                 8-char invite_code, is_archived, points_win/draw/loss
+leagues    1─* league_members *─1 profiles        role: owner | admin | player (1 owner per league)
+leagues    1─* seasons                            status: draft | active | completed | archived (≤ 1 active/league)
 seasons    1─* season_participants *─1 profiles   unique (season_id, user_id)
-seasons    1─* matches                            player_a_id, player_b_id → profiles
-matches    1─* match_submissions                  every proposed score (audit trail)
+seasons    1─* matches                            player_a_id <> player_b_id → profiles, round, scheduled_at
+matches    1─* match_submissions                  every proposed score (audit trail: manual|screenshot_ai, submission|correction|admin_resolution)
 matches    1─0..1 match_results                   the official, confirmed score
-matches    1─* match_screenshots                  storage object paths
-matches    1─* result_disputes                    reason, resolution, resolved_by
-profiles   1─* notifications
-profiles   1─* achievements (per league/season)
+matches    1─* match_screenshots                  storage object paths + optional ai_extraction jsonb
+matches    1─* result_disputes                    reason, status (open|resolved), resolved_by, resolution_note
+profiles   1─* notifications                      users read and mark read_at on their own rows only
+profiles   1─* achievements                       per league/season
 ```
 
 Match status machine (enforced in Postgres functions):

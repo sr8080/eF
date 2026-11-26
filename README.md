@@ -37,8 +37,8 @@ auth URLs, email templates, Vercel).
 | Phase | Scope                                                       | Status |
 | ----- | ----------------------------------------------------------- | ------ |
 | 1     | Project setup, design system, landing page, authentication | ✅ Done |
-| 2     | Schema, RLS, league creation & joining                      | Next   |
-| 3     | Player & season management                                  |        |
+| 2     | Schema, RLS, league creation & joining                      | ✅ Done |
+| 3     | Player & season management                                  | Next   |
 | 4     | Matches & fixture generation                                |        |
 | 5     | Result submission, screenshots, verification                |        |
 | 6     | Standings & statistics                                      |        |

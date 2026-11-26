@@ -124,5 +124,216 @@ await db.exec(`reset role;`);
 const bucket = await one(`select * from storage.buckets where id = 'avatars'`);
 check("avatars bucket created (public, 2MB limit)", bucket?.public === true && Number(bucket.file_size_limit) === 2097152);
 
+// ============================================================================
+// Phase 2: leagues, RLS, membership ops, match locks, notifications, storage
+// ============================================================================
+
+const D = "44444444-4444-4444-4444-444444444444";
+await db.query(`insert into auth.users (id, raw_user_meta_data) values ($1, $2)`, [
+  D, { username: "outsider", display_name: "Outsider" },
+]);
+
+const asUser = async (uid) => {
+  await db.exec(`reset role; set role authenticated; select set_config('request.jwt.claim.sub', '${uid}', false);`);
+};
+const asAnon = async () => {
+  await db.exec(`reset role; set role anon; select set_config('request.jwt.claim.sub', '', false);`);
+};
+const mustFail = async (label, fn) => {
+  let blocked = false;
+  try {
+    const res = await fn();
+    if (res && typeof res.affectedRows === "number" && res.affectedRows === 0) blocked = true;
+  } catch {
+    blocked = true;
+  }
+  check(label, blocked);
+};
+
+// Buckets created
+const logoBucket = await one(`select * from storage.buckets where id = 'league-logos'`);
+check("league-logos bucket created (public, 2MB limit)", logoBucket?.public === true && Number(logoBucket.file_size_limit) === 2097152);
+const shotBucket = await one(`select * from storage.buckets where id = 'match-screenshots'`);
+check("match-screenshots bucket created (private, 5MB limit)", shotBucket?.public === false && Number(shotBucket.file_size_limit) === 5242880);
+
+// User A creates a league
+await asUser(A);
+const leagueId = (await one(`select public.create_league('Sunday Super League', 'Friends weekend cup') as id`)).id;
+check("create_league returns uuid", typeof leagueId === "string" && leagueId.length === 36);
+
+const createdLeague = await one(`select * from public.leagues where id = $1`, [leagueId]);
+check("invite code is 8 unambiguous chars", /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(createdLeague?.invite_code));
+const ownerRow = await one(`select * from public.league_members where league_id = $1 and user_id = $2`, [leagueId, A]);
+check("creator becomes owner", ownerRow?.role === "owner");
+
+// Invite preview as anon leaks no member data
+await asAnon();
+const preview = await one(`select * from public.get_league_invite_preview($1)`, [createdLeague.invite_code]);
+check(
+  "invite preview returns only safe public fields",
+  preview?.id === leagueId &&
+    preview?.name === "Sunday Super League" &&
+    Number(preview?.member_count) === 1 &&
+    preview?.is_archived === false &&
+    Object.keys(preview).sort().join(",") === "id,is_archived,logo_url,member_count,name",
+  Object.keys(preview ?? {}).join(","),
+);
+const badPreview = await one(`select * from public.get_league_invite_preview('ZZZZZZZZ')`);
+check("invalid invite preview returns nothing", badPreview === undefined);
+
+// Non-member D sees nothing
+await asUser(D);
+check("non-member cannot see league", (await db.query(`select id from public.leagues where id = $1`, [leagueId])).rows.length === 0);
+check("non-member cannot see league_members", (await db.query(`select id from public.league_members where league_id = $1`, [leagueId])).rows.length === 0);
+await mustFail("non-member cannot join with invalid code", () =>
+  db.query(`select public.join_league_by_code('BADCODE1')`),
+);
+
+// B and C join by code; joining twice is idempotent
+await asUser(B);
+const joinedB1 = (await one(`select public.join_league_by_code($1) as id`, [createdLeague.invite_code.toLowerCase()])).id;
+const joinedB2 = (await one(`select public.join_league_by_code($1) as id`, [createdLeague.invite_code])).id;
+check("join_league_by_code is idempotent", joinedB1 === leagueId && joinedB2 === leagueId);
+
+await asUser(C);
+await db.query(`select public.join_league_by_code($1)`, [createdLeague.invite_code]);
+const memberCount = Number((await one(`select count(*) c from public.league_members where league_id = $1`, [leagueId])).c);
+check("B and C joined as players (3 members)", memberCount === 3, `count=${memberCount}`);
+
+// Player B cannot update league settings or change roles
+await asUser(B);
+await mustFail("player cannot update league settings", () =>
+  db.query(`update public.leagues set name = 'Hacked Name' where id = $1`, [leagueId]),
+);
+await mustFail("player cannot regenerate invite code", () =>
+  db.query(`select public.regenerate_invite_code($1)`, [leagueId]),
+);
+await mustFail("player cannot change member roles", () =>
+  db.query(`select public.set_member_role($1, $2, 'admin')`, [leagueId, C]),
+);
+
+// Only owner can change roles
+await asUser(A);
+await db.query(`select public.set_member_role($1, $2, 'admin')`, [leagueId, B]);
+check("owner can promote player to admin", (await one(`select role from public.league_members where league_id = $1 and user_id = $2`, [leagueId, B])).role === "admin");
+await mustFail("owner cannot change own role directly", () =>
+  db.query(`select public.set_member_role($1, $2, 'admin')`, [leagueId, A]),
+);
+
+// Admin B can update settings, cannot change roles, cannot remove owner or another admin
+await asUser(B);
+const updLeague = await db.query(`update public.leagues set description = 'Updated by admin' where id = $1`, [leagueId]);
+check("admin can update active league settings", updLeague.affectedRows === 1);
+await mustFail("admin cannot change member roles", () =>
+  db.query(`select public.set_member_role($1, $2, 'admin')`, [leagueId, C]),
+);
+await mustFail("admin cannot remove owner", () =>
+  db.query(`select public.remove_member($1, $2)`, [leagueId, A]),
+);
+
+// Make C admin as well so we can verify admin cannot remove another admin
+await asUser(A);
+await db.query(`select public.set_member_role($1, $2, 'admin')`, [leagueId, C]);
+await asUser(B);
+await mustFail("admin cannot remove another admin", () =>
+  db.query(`select public.remove_member($1, $2)`, [leagueId, C]),
+);
+
+// Demote C back to player, then admin B can remove player C
+await asUser(A);
+await db.query(`select public.set_member_role($1, $2, 'player')`, [leagueId, C]);
+await asUser(B);
+await db.query(`select public.remove_member($1, $2)`, [leagueId, C]);
+check("admin can remove player", (await one(`select * from public.league_members where league_id = $1 and user_id = $2`, [leagueId, C])) === undefined);
+
+// Regenerate invite code invalidates old code
+const oldCode = createdLeague.invite_code;
+const newCode = (await one(`select public.regenerate_invite_code($1) as code`, [leagueId])).code;
+check("manager can regenerate invite code", newCode !== oldCode && /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}$/.test(newCode));
+await asUser(C);
+await mustFail("old invite code no longer works", () => db.query(`select public.join_league_by_code($1)`, [oldCode]));
+
+// Leave league & transfer ownership
+await asUser(A);
+await mustFail("owner cannot leave before transferring ownership", () =>
+  db.query(`select public.leave_league($1)`, [leagueId]),
+);
+await db.query(`select public.transfer_ownership($1, $2)`, [leagueId, B]);
+const newOwner = await one(`select role from public.league_members where league_id = $1 and user_id = $2`, [leagueId, B]);
+const oldOwner = await one(`select role from public.league_members where league_id = $1 and user_id = $2`, [leagueId, A]);
+check("transfer_ownership swaps owner and demotes old owner to admin", newOwner?.role === "owner" && oldOwner?.role === "admin");
+
+// Storage rules for league-logos: B (owner) can upload, C (non-member) cannot; transfer back or add C as player to test player rejection
+await asUser(C);
+await db.query(`select public.join_league_by_code($1)`, [newCode]);
+await mustFail("player cannot upload league logo", () =>
+  db.query(`insert into storage.objects (bucket_id, name) values ('league-logos', '${leagueId}/logo-1.png')`),
+);
+await asUser(D);
+await mustFail("non-member cannot upload league logo", () =>
+  db.query(`insert into storage.objects (bucket_id, name) values ('league-logos', '${leagueId}/logo-2.png')`),
+);
+await asUser(B);
+let logoUploadOk = true;
+try {
+  await db.query(`insert into storage.objects (bucket_id, name) values ('league-logos', '${leagueId}/logo-3.png')`);
+} catch {
+  logoUploadOk = false;
+}
+check("manager can upload league logo under <league_id>/", logoUploadOk);
+
+// Archived league: rejects joins and updates, only owner can archive/unarchive
+await asUser(A);
+await mustFail("admin cannot archive league", () => db.query(`select public.archive_league($1)`, [leagueId]));
+await asUser(B);
+await db.query(`select public.archive_league($1)`, [leagueId]);
+check("owner can archive league", (await one(`select is_archived from public.leagues where id = $1`, [leagueId])).is_archived === true);
+
+await asUser(D);
+await mustFail("non-member cannot join archived league", () =>
+  db.query(`select public.join_league_by_code($1)`, [newCode]),
+);
+await asUser(B);
+await mustFail("archived league cannot be updated directly", () =>
+  db.query(`update public.leagues set name = 'Archived Edit' where id = $1`, [leagueId]),
+);
+await mustFail("archived league blocks logo upload", () =>
+  db.query(`insert into storage.objects (bucket_id, name) values ('league-logos', '${leagueId}/logo-4.png')`),
+);
+await db.query(`select public.unarchive_league($1)`, [leagueId]);
+check("owner can unarchive league", (await one(`select is_archived from public.leagues where id = $1`, [leagueId])).is_archived === false);
+
+// Player C can leave active league
+await asUser(C);
+await db.query(`select public.leave_league($1)`, [leagueId]);
+check("player can leave league", (await one(`select * from public.league_members where league_id = $1 and user_id = $2`, [leagueId, C])) === undefined);
+
+// Seed a season + match + notifications as postgres to verify client protections
+await db.exec(`reset role;`);
+const seasonId = (await one(`insert into public.seasons (league_id, name, number, status) values ($1, 'Season 1', 1, 'active') returning id`, [leagueId])).id;
+const matchId = (await one(`insert into public.matches (league_id, season_id, player_a_id, player_b_id, created_by) values ($1, $2, $3, $4, $3) returning id`, [leagueId, seasonId, A, B])).id;
+const notifA = (await one(`insert into public.notifications (user_id, type, league_id) values ($1, 'league_joined', $2) returning id`, [A, leagueId])).id;
+const notifB = (await one(`insert into public.notifications (user_id, type, league_id) values ($1, 'league_joined', $2) returning id`, [B, leagueId])).id;
+
+await asUser(B);
+await mustFail("client cannot insert into match_results", () =>
+  db.query(`insert into public.match_results (league_id, match_id, score_a, score_b, confirmed_by) values ($1, $2, 2, 1, $3)`, [leagueId, matchId, B]),
+);
+await mustFail("client cannot update matches.status directly", () =>
+  db.query(`update public.matches set status = 'confirmed' where id = $1`, [matchId]),
+);
+await mustFail("client cannot insert into achievements", () =>
+  db.query(`insert into public.achievements (user_id, league_id, season_id, kind) values ($1, $2, $3, 'champion')`, [B, leagueId, seasonId]),
+);
+
+// Notifications isolation
+const visibleNotifsB = (await db.query(`select id from public.notifications`)).rows;
+check("user sees only own notifications", visibleNotifsB.length === 1 && visibleNotifsB[0].id === notifB);
+await mustFail("user cannot mark someone else's notification read", () =>
+  db.query(`update public.notifications set read_at = now() where id = $1`, [notifA]),
+);
+const markOwn = await db.query(`update public.notifications set read_at = now() where id = $1`, [notifB]);
+check("user can mark own notification read", markOwn.affectedRows === 1);
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

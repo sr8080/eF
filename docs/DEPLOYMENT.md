@@ -12,10 +12,14 @@ Everything here runs on free tiers: **Supabase Free** (database, auth, storage) 
 
 ## 2. Run the migrations
 
-Apply every file in `supabase/migrations/` **in filename order**.
+Apply every file in `supabase/migrations/` **in filename order**:
+
+1. `20261122000001_profiles.sql` — `profiles`, signup trigger, `is_username_available()`, `avatars` bucket
+2. `20261126000001_phase2_schema_and_rls.sql` — leagues, members, seasons, matches, submissions, results, screenshots, disputes, notifications, achievements, RLS and security helpers
+3. `20261126000002_league_operations_and_storage.sql` — atomic league RPC functions plus `league-logos` and `match-screenshots` buckets/policies
 
 **Option A: SQL editor (no tools needed).** Open *SQL Editor → New query*, paste
-the file contents, run. Repeat for each file.
+the file contents, run. Repeat for each file in order.
 
 **Option B: Supabase CLI.**
 
@@ -25,9 +29,12 @@ npx supabase link --project-ref <your-project-ref>
 npx supabase db push
 ```
 
-The profiles migration also creates the **`avatars`** storage bucket and its policies,
-so there is no manual bucket setup in Phase 1. Later phases add `league-logos` and the
-private `match-screenshots` bucket the same way.
+The migrations automatically create all three Storage buckets and their RLS policies,
+so no manual bucket setup is needed:
+
+- `avatars` — public read, owner-only write (`<user_id>/...`, 2 MB)
+- `league-logos` — public read, league-manager-only write (`<league_id>/...`, 2 MB)
+- `match-screenshots` — **private**, league-member-only read (`<league_id>/<match_id>/...`, 5 MB; uploads wired in Phase 5)
 
 After migrating, optionally regenerate TypeScript types:
 
