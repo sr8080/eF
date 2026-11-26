@@ -1,26 +1,181 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
+
+/* -----------------------------------------------------------------------------
+ * eFootball League Hub design tokens
+ * Dark-only esports theme: deep navy canvas, electric green primary, blue info.
+ * -------------------------------------------------------------------------- */
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-heading: var(--font-geist-sans);
+
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+
+  /* App-specific semantic colours */
+  --color-info: var(--info);
+  --color-warning: var(--warning);
+  --color-win: var(--win);
+  --color-draw: var(--draw);
+  --color-loss: var(--loss);
+  --color-surface-2: var(--surface-2);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root,
+.dark {
+  color-scheme: dark;
+
+  --background: #070b14;
+  --foreground: #e6eaf2;
+
+  --card: #0d1322;
+  --card-foreground: #e6eaf2;
+  --surface-2: #121a2c;
+  --popover: #10172a;
+  --popover-foreground: #e6eaf2;
+
+  --primary: #22f07a;
+  --primary-foreground: #03140a;
+
+  --secondary: #162036;
+  --secondary-foreground: #e6eaf2;
+  --muted: #131b2e;
+  --muted-foreground: #8b95a9;
+  --accent: #172238;
+  --accent-foreground: #e6eaf2;
+
+  --destructive: #f0465a;
+  --info: #3b82f6;
+  --warning: #f5b83d;
+  --win: #22f07a;
+  --draw: #94a3b8;
+  --loss: #f0465a;
+
+  --border: rgb(148 163 184 / 0.12);
+  --input: rgb(148 163 184 / 0.18);
+  --ring: #22f07a;
+
+  --chart-1: #22f07a;
+  --chart-2: #3b82f6;
+  --chart-3: #a78bfa;
+  --chart-4: #f5b83d;
+  --chart-5: #f0465a;
+
+  --radius: 0.625rem;
+
+  --sidebar: #0a101c;
+  --sidebar-foreground: #c9d1e0;
+  --sidebar-primary: #22f07a;
+  --sidebar-primary-foreground: #03140a;
+  --sidebar-accent: #131c30;
+  --sidebar-accent-foreground: #e6eaf2;
+  --sidebar-border: rgb(148 163 184 / 0.1);
+  --sidebar-ring: #22f07a;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight text-balance;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  /* Scores, tables and stats: monospaced, equal-width digits. */
+  .tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Faint pitch-line grid for hero areas. */
+  .pitch-grid {
+    background-image:
+      linear-gradient(to right, rgb(148 163 184 / 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(148 163 184 / 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+  }
+
+  /* One restrained glow used behind hero content. */
+  .glow-primary {
+    background: radial-gradient(
+      60% 50% at 50% 0%,
+      rgb(34 240 122 / 0.14) 0%,
+      rgb(59 130 246 / 0.06) 45%,
+      transparent 75%
+    );
+  }
+
+  /* Space for the fixed mobile bottom nav + iOS home indicator. */
+  .pb-bottom-nav {
+    padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

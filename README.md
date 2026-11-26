@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# eFootball League Hub
 
-## Getting Started
+Private eFootball leagues for groups of friends: fixtures, opponent-verified results,
+live standings and player stats. Mobile-first, free to host.
 
-First, run the development server:
+**Stack:** Next.js 16 (App Router, Cache Components) · TypeScript · Tailwind CSS 4 ·
+shadcn/ui · Supabase (Postgres + RLS, Auth, Storage) · Zod + React Hook Form · Vercel.
+
+## Quick start
 
 ```bash
+cp .env.example .env.local   # add your Supabase URL + publishable key
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Before the app works you need a Supabase project with the migrations applied. See
+**[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)** for the full walkthrough (project, migrations,
+auth URLs, email templates, Vercel).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command           | What it does                                                   |
+| ----------------- | -------------------------------------------------------------- |
+| `npm run dev`     | Dev server on http://localhost:3000                            |
+| `npm run build`   | Production build                                               |
+| `npm run check`   | Typecheck + lint + database policy tests                       |
+| `npm run test:db` | Applies all migrations to in-memory Postgres and tests RLS     |
 
-## Learn More
+## Docs
 
-To learn more about Next.js, take a look at the following resources:
+- [Architecture, folder structure, data model, design direction](docs/ARCHITECTURE.md)
+- [Setup & deployment](docs/DEPLOYMENT.md)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Build status
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Phase | Scope                                                       | Status |
+| ----- | ----------------------------------------------------------- | ------ |
+| 1     | Project setup, design system, landing page, authentication | ✅ Done |
+| 2     | Schema, RLS, league creation & joining                      | Next   |
+| 3     | Player & season management                                  |        |
+| 4     | Matches & fixture generation                                |        |
+| 5     | Result submission, screenshots, verification                |        |
+| 6     | Standings & statistics                                      |        |
+| 7     | Dashboard, notifications, match history                     |        |
+| 8     | Testing, security review, deployment                        |        |
