@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, LogOut, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -100,19 +101,24 @@ export function ParticipantsManager({
               className="flex flex-col gap-3 p-3.5 sm:flex-row sm:items-center sm:justify-between sm:p-4"
             >
               <div className="flex min-w-0 items-center gap-3">
-                <UserAvatar
-                  name={member.profile.display_name}
-                  src={member.profile.avatar_url}
-                  size="default"
-                />
+                <Link href={`/players/${member.userId}`} className="shrink-0">
+                  <UserAvatar
+                    name={member.profile.display_name}
+                    src={member.profile.avatar_url}
+                    size="default"
+                  />
+                </Link>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="truncate font-medium">
+                    <Link
+                      href={`/players/${member.userId}`}
+                      className="truncate font-medium hover:text-primary"
+                    >
                       {member.profile.display_name}
-                      {isSelf && (
-                        <span className="ml-1.5 text-xs font-normal text-muted-foreground">(you)</span>
-                      )}
-                    </span>
+                    </Link>
+                    {isSelf && (
+                      <span className="text-xs font-normal text-muted-foreground">(you)</span>
+                    )}
                     <RoleBadge role={member.role} />
                   </div>
                   <p className="mt-0.5 truncate text-xs text-muted-foreground">

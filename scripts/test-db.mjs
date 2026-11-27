@@ -335,5 +335,90 @@ await mustFail("user cannot mark someone else's notification read", () =>
 const markOwn = await db.query(`update public.notifications set read_at = now() where id = $1`, [notifB]);
 check("user can mark own notification read", markOwn.affectedRows === 1);
 
+// ============================================================================
+// Phase 3: season lifecycle & participant management
+// ============================================================================
+
+// Ensure A and B are both members of leagueId (B is owner, A is admin, C left earlier; rejoin C as player)
+await asUser(C);
+await db.query(`select public.join_league_by_code($1)`, [newCode]);
+
+// Player C cannot create a season or modify season participants
+await asUser(C);
+await mustFail("player cannot create a season", () =>
+  db.query(`select public.create_season($1, 'Player Draft', null)`, [leagueId]),
+);
+
+// Non-member D cannot see seasons or season_participants
+await asUser(D);
+check("non-member cannot see seasons", (await db.query(`select id from public.seasons where league_id = $1`, [leagueId])).rows.length === 0);
+
+// Admin A creates Season 2 (Season 1 was seeded earlier as active)
+await asUser(A);
+const s2Id = (await one(`select public.create_season($1, 'Spring Cup', $2::uuid[]) as id`, [leagueId, `{${A},${B}}`])).id;
+const s2Row = await one(`select * from public.seasons where id = $1`, [s2Id]);
+check("create_season auto-increments number and starts as draft", s2Row?.number === 2 && s2Row?.status === "draft");
+
+// Reject non-league member D as season participant
+await mustFail("cannot enroll non-league member into season", () =>
+  db.query(`select public.set_season_participants($1, $2::uuid[])`, [s2Id, `{${A},${D}}`]),
+);
+
+// Cannot start s2 while Season 1 is still active
+await mustFail("cannot start second active season in same league", () =>
+  db.query(`select public.start_season($1)`, [s2Id]),
+);
+
+// Complete Season 1 (only participant or valid participant allowed as champion)
+await db.query(`select public.set_season_participants($1, $2::uuid[])`, [seasonId, `{${A},${B}}`]);
+await mustFail("cannot remove participant who already has matches in season", () =>
+  db.query(`select public.set_season_participants($1, $2::uuid[])`, [seasonId, `{${A}}`]),
+);
+await mustFail("cannot set non-participant as champion", () =>
+  db.query(`select public.complete_season($1, $2)`, [seasonId, C]),
+);
+await db.query(`select public.complete_season($1, $2)`, [seasonId, B]);
+const s1Done = await one(`select status, champion_id from public.seasons where id = $1`, [seasonId]);
+check("complete_season records status and champion", s1Done?.status === "completed" && s1Done?.champion_id === B);
+
+// Completed season participants are locked
+await mustFail("cannot modify participants on completed season", () =>
+  db.query(`select public.set_season_participants($1, $2::uuid[])`, [seasonId, `{${A},${B},${C}}`]),
+);
+
+// Needs >= 2 participants to start a draft season
+await db.query(`select public.set_season_participants($1, $2::uuid[])`, [s2Id, `{${A}}`]);
+await mustFail("cannot start season with fewer than 2 participants", () =>
+  db.query(`select public.start_season($1)`, [s2Id]),
+);
+
+// Add A, B, C and start Season 2
+await db.query(`select public.set_season_participants($1, $2::uuid[])`, [s2Id, `{${A},${B},${C}}`]);
+await db.query(`select public.start_season($1)`, [s2Id]);
+const s2Started = await one(`select status, started_at from public.seasons where id = $1`, [s2Id]);
+check("start_season activates draft season", s2Started?.status === "active" && s2Started?.started_at !== null);
+
+// Rename & archive Season 2
+await db.query(`select public.update_season_name($1, 'Spring Cup Finale')`, [s2Id]);
+check("manager can rename active season", (await one(`select name from public.seasons where id = $1`, [s2Id])).name === "Spring Cup Finale");
+await db.query(`select public.archive_season($1)`, [s2Id]);
+check("manager can archive season", (await one(`select status from public.seasons where id = $1`, [s2Id])).status === "archived");
+
+// Player C cannot start/complete/archive seasons
+const s3Id = (await one(`select public.create_season($1, 'Summer Cup', $2::uuid[]) as id`, [leagueId, `{${A},${B}}`])).id;
+await asUser(C);
+await mustFail("player cannot start season", () => db.query(`select public.start_season($1)`, [s3Id]));
+await mustFail("player cannot archive season", () => db.query(`select public.archive_season($1)`, [s3Id]));
+
+// Archived league blocks season creation & mutations
+await asUser(B);
+await db.query(`select public.archive_league($1)`, [leagueId]);
+await mustFail("archived league blocks create_season", () =>
+  db.query(`select public.create_season($1, 'Locked Season', null)`, [leagueId]),
+);
+await mustFail("archived league blocks start_season", () =>
+  db.query(`select public.start_season($1)`, [s3Id]),
+);
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

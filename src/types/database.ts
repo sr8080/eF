@@ -743,6 +743,34 @@ export type Database = {
         Args: { p_league_id: string };
         Returns: undefined;
       };
+      create_season: {
+        Args: {
+          p_league_id: string;
+          p_name: string;
+          p_participant_ids?: string[] | null;
+        };
+        Returns: string;
+      };
+      update_season_name: {
+        Args: { p_season_id: string; p_name: string };
+        Returns: undefined;
+      };
+      set_season_participants: {
+        Args: { p_season_id: string; p_user_ids: string[] };
+        Returns: undefined;
+      };
+      start_season: {
+        Args: { p_season_id: string };
+        Returns: undefined;
+      };
+      complete_season: {
+        Args: { p_season_id: string; p_champion_id?: string | null };
+        Returns: undefined;
+      };
+      archive_season: {
+        Args: { p_season_id: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       league_role: "owner" | "admin" | "player";
@@ -788,5 +816,9 @@ export type Profile = Tables<"profiles">;
 export type League = Tables<"leagues">;
 export type LeagueMember = Tables<"league_members">;
 export type LeagueRole = Enums<"league_role">;
+export type Season = Tables<"seasons">;
+export type SeasonStatus = Enums<"season_status">;
+export type SeasonParticipant = Tables<"season_participants">;
+export type Achievement = Tables<"achievements">;
 export type LeagueInvitePreview =
   Database["public"]["Functions"]["get_league_invite_preview"]["Returns"][number];

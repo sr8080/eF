@@ -38,8 +38,8 @@ auth URLs, email templates, Vercel).
 | ----- | ----------------------------------------------------------- | ------ |
 | 1     | Project setup, design system, landing page, authentication | ✅ Done |
 | 2     | Schema, RLS, league creation & joining                      | ✅ Done |
-| 3     | Player & season management                                  | Next   |
-| 4     | Matches & fixture generation                                |        |
+| 3     | Player & season management                                  | ✅ Done |
+| 4     | Matches & fixture generation                                | Next   |
 | 5     | Result submission, screenshots, verification                |        |
 | 6     | Standings & statistics                                      |        |
 | 7     | Dashboard, notifications, match history                     |        |

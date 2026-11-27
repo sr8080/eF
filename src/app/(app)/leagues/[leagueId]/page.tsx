@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, CalendarDays } from "lucide-react";
 import { getLeagueMembers, requireLeagueContext } from "@/lib/leagues";
+import { getLeagueSeasons } from "@/lib/seasons";
 import { InvitePanel } from "@/components/leagues/invite-panel";
-import { RoleBadge } from "@/components/leagues/league-badges";
+import { RoleBadge, formatShortDate } from "@/components/leagues/league-badges";
+import { SeasonStatusBadge } from "@/components/seasons/season-badges";
 import { UserAvatar } from "@/components/user/user-avatar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,11 +30,15 @@ async function LeagueOverview({
 }) {
   const { leagueId } = await params;
   const ctx = await requireLeagueContext(leagueId);
-  const members = await getLeagueMembers(leagueId);
+  const [members, seasons] = await Promise.all([
+    getLeagueMembers(leagueId),
+    getLeagueSeasons(leagueId),
+  ]);
 
   const { league, role, memberCount } = ctx;
   const isManager = role === "owner" || role === "admin";
   const previewMembers = members.slice(0, 6);
+  const activeSeason = seasons.find((s) => s.season.status === "active") ?? seasons[0] ?? null;
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -47,6 +53,58 @@ async function LeagueOverview({
             </p>
           </section>
         )}
+
+        <section className="rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="season-summary-heading">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="season-summary-heading" className="font-semibold">
+              Current season
+            </h2>
+            <Link
+              href={`/leagues/${league.id}/seasons`}
+              className="text-xs font-medium text-info hover:underline"
+            >
+              Manage seasons ({seasons.length})
+            </Link>
+          </div>
+
+          {activeSeason ? (
+            <div className="mt-3 flex flex-col gap-3 rounded-lg border bg-surface-2 p-3.5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="tabular text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    #{activeSeason.season.number}
+                  </span>
+                  <span className="font-semibold">{activeSeason.season.name}</span>
+                  <SeasonStatusBadge status={activeSeason.season.status} />
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <span className="tabular">{activeSeason.participants.length}</span>{" "}
+                  {activeSeason.participants.length === 1 ? "player" : "players"}
+                  {activeSeason.season.started_at && (
+                    <> · Started {formatShortDate(activeSeason.season.started_at)}</>
+                  )}
+                </p>
+              </div>
+              <Button asChild variant="outline" size="sm" className="min-h-10 sm:min-h-8">
+                <Link href={`/leagues/${league.id}/seasons`}>
+                  Open seasons <ArrowRight />
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed bg-surface-2/60 p-3.5 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                <CalendarDays className="size-4 shrink-0" />
+                <span>No season created yet.</span>
+              </div>
+              <Button asChild variant="secondary" size="sm" className="min-h-10 sm:min-h-8">
+                <Link href={`/leagues/${league.id}/seasons`}>
+                  {isManager ? "Create season" : "View seasons"}
+                </Link>
+              </Button>
+            </div>
+          )}
+        </section>
 
         <InvitePanel
           leagueId={league.id}
@@ -96,13 +154,18 @@ async function LeagueOverview({
         <ul className="mt-4 space-y-3">
           {previewMembers.map((m) => (
             <li key={m.id} className="flex items-center justify-between gap-2.5">
-              <div className="flex min-w-0 items-center gap-2.5">
+              <Link
+                href={`/players/${m.userId}`}
+                className="group flex min-w-0 items-center gap-2.5"
+              >
                 <UserAvatar name={m.profile.display_name} src={m.profile.avatar_url} size="sm" />
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{m.profile.display_name}</p>
+                  <p className="truncate text-sm font-medium group-hover:text-primary">
+                    {m.profile.display_name}
+                  </p>
                   <p className="truncate text-xs text-muted-foreground">@{m.profile.username}</p>
                 </div>
-              </div>
+              </Link>
               <RoleBadge role={m.role} />
             </li>
           ))}
@@ -122,6 +185,7 @@ function OverviewSkeleton() {
   return (
     <div className="grid gap-4 lg:grid-cols-3" aria-busy="true">
       <div className="space-y-4 lg:col-span-2">
+        <Skeleton className="h-32 rounded-xl" />
         <Skeleton className="h-44 rounded-xl" />
         <Skeleton className="h-36 rounded-xl" />
       </div>
