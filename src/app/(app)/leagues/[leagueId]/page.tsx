@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, CalendarDays } from "lucide-react";
+import { ArrowRight, CalendarDays, Swords } from "lucide-react";
 import { getLeagueMembers, requireLeagueContext } from "@/lib/leagues";
+import { getLeagueMatches } from "@/lib/matches";
 import { getLeagueSeasons } from "@/lib/seasons";
 import { InvitePanel } from "@/components/leagues/invite-panel";
 import { RoleBadge, formatShortDate } from "@/components/leagues/league-badges";
+import { MatchCard } from "@/components/matches/match-card";
 import { SeasonStatusBadge } from "@/components/seasons/season-badges";
 import { UserAvatar } from "@/components/user/user-avatar";
 import { Button } from "@/components/ui/button";
@@ -30,15 +32,19 @@ async function LeagueOverview({
 }) {
   const { leagueId } = await params;
   const ctx = await requireLeagueContext(leagueId);
-  const [members, seasons] = await Promise.all([
+  const [members, seasons, matches] = await Promise.all([
     getLeagueMembers(leagueId),
     getLeagueSeasons(leagueId),
+    getLeagueMatches(leagueId),
   ]);
 
   const { league, role, memberCount } = ctx;
   const isManager = role === "owner" || role === "admin";
   const previewMembers = members.slice(0, 6);
   const activeSeason = seasons.find((s) => s.season.status === "active") ?? seasons[0] ?? null;
+  const upcomingFixtures = matches
+    .filter((m) => m.displayStatus !== "cancelled" && m.displayStatus !== "confirmed")
+    .slice(0, 3);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -113,6 +119,40 @@ async function LeagueOverview({
           canManage={isManager}
           isArchived={league.is_archived}
         />
+
+        <section className="rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="fixtures-summary-heading">
+          <div className="flex items-center justify-between gap-2">
+            <h2 id="fixtures-summary-heading" className="font-semibold">
+              Upcoming fixtures
+            </h2>
+            <Link
+              href={`/leagues/${league.id}/fixtures`}
+              className="text-xs font-medium text-info hover:underline"
+            >
+              View all ({matches.length})
+            </Link>
+          </div>
+
+          {upcomingFixtures.length > 0 ? (
+            <div className="mt-3 space-y-2.5">
+              {upcomingFixtures.map((item) => (
+                <MatchCard key={item.match.id} item={item} currentUserId={ctx.user.id} />
+              ))}
+            </div>
+          ) : (
+            <div className="mt-3 flex flex-col items-start justify-between gap-3 rounded-lg border border-dashed bg-surface-2/60 p-3.5 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                <Swords className="size-4 shrink-0" />
+                <span>No upcoming fixtures yet.</span>
+              </div>
+              <Button asChild variant="secondary" size="sm" className="min-h-10 sm:min-h-8">
+                <Link href={`/leagues/${league.id}/fixtures`}>
+                  {isManager ? "Schedule fixtures" : "View fixtures"}
+                </Link>
+              </Button>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-xl border bg-card p-4 sm:p-5" aria-labelledby="scoring-heading">
           <h2 id="scoring-heading" className="font-semibold">

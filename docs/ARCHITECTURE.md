@@ -32,14 +32,15 @@
   `league_role(league_id)`, `is_league_manager(league_id)` and
   `is_league_archived(league_id)` (`set search_path = ''`) so membership checks never
   recurse.
-- **Atomic league & season operations.** League operations (`create_league`,
+- **Atomic league, season & match operations.** League operations (`create_league`,
   `get_league_invite_preview` — anon-safe, leaks no member identities,
   `join_league_by_code`, `regenerate_invite_code`, `set_member_role`,
   `remove_member`, `leave_league`, `transfer_ownership`, `archive_league`,
-  `unarchive_league`) and season lifecycle operations (`create_season`,
+  `unarchive_league`), season lifecycle operations (`create_season`,
   `update_season_name`, `set_season_participants`, `start_season`,
-  `complete_season`, `archive_season`) execute in Postgres with authorization
-  enforced inside SQL.
+  `complete_season`, `archive_season`), and fixture scheduling operations
+  (`create_match`, `generate_round_robin_fixtures`, `update_match_schedule`,
+  `cancel_match`) execute in Postgres with authorization enforced inside SQL.
 - **Mutations go through Server Actions** that validate with the same Zod schema the
   client form uses (`src/lib/validations/*`). One schema, two enforcement points.
 - **Result lifecycle changes go through Postgres functions** (`submit_match_result`,
@@ -76,9 +77,9 @@
 │  │     ├─ dashboard/
 │  │     ├─ leagues/
 │  │     │  ├─ new/
-│  │     │  └─ [leagueId]/    overview, seasons, participants, settings (fixtures,
-│  │     │                    standings, stats, gallery, matches/[matchId] planned)
-│  │     ├─ matches/          my matches, submit result (planned)
+│  │     │  └─ [leagueId]/    overview, seasons, fixtures, participants, settings,
+│  │     │                    matches/[matchId] (standings, stats, gallery planned)
+│  │     ├─ matches/          my matches across leagues
 │  │     ├─ players/[userId]/ player profile, shared leagues, seasons, achievements
 │  │     ├─ notifications/
 │  │     └─ settings/         profile, avatar, password
@@ -86,13 +87,14 @@
 │  │  ├─ ui/                  shadcn/ui primitives
 │  │  ├─ layout/              app shell, sidebar, bottom nav, page header
 │  │  ├─ brand/               logo
-│  │  └─ <feature>/           auth, settings, leagues, seasons ... feature components
+│  │  └─ <feature>/           auth, settings, leagues, seasons, matches ... components
 │  ├─ lib/
 │  │  ├─ supabase/            server / browser / proxy clients
 │  │  ├─ validations/         Zod schemas shared by forms and actions
 │  │  ├─ actions/             server actions grouped by domain
 │  │  ├─ leagues.ts           cached league data access helpers
 │  │  ├─ seasons.ts           cached season & player profile data access helpers
+│  │  ├─ matches.ts           cached match data access helpers & derived status
 │  │  ├─ ai/                  screenshot extractor interface + providers
 │  │  └─ utils.ts
 │  ├─ types/database.ts       hand-maintained / generated Supabase types

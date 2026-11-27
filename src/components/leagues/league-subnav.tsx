@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { CalendarDays, LayoutDashboard, Settings, Users } from "lucide-react";
+import { CalendarDays, LayoutDashboard, Settings, Swords, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type LeagueTab = {
@@ -12,10 +12,11 @@ export type LeagueTab = {
   managersOnly?: boolean;
 };
 
-// Ready for future Phase 4+ tabs (Fixtures, Standings, Stats, Gallery).
+// Ready for future Phase 5+ tabs (Standings, Stats, Gallery).
 const LEAGUE_TABS: LeagueTab[] = [
   { segment: "", label: "Overview", icon: LayoutDashboard },
   { segment: "/seasons", label: "Seasons", icon: CalendarDays },
+  { segment: "/fixtures", label: "Fixtures", icon: Swords },
   { segment: "/participants", label: "Participants", icon: Users },
   { segment: "/settings", label: "Settings", icon: Settings, managersOnly: true },
 ];

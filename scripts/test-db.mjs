@@ -420,5 +420,87 @@ await mustFail("archived league blocks start_season", () =>
   db.query(`select public.start_season($1)`, [s3Id]),
 );
 
+// ============================================================================
+// Phase 4: matches, round-robin fixture generation, reschedule & cancel
+// ============================================================================
+
+// Unarchive league for Phase 4 checks and enroll A, B, C into s3Id (draft)
+await asUser(B);
+await db.query(`select public.unarchive_league($1)`, [leagueId]);
+await db.query(`select public.set_season_participants($1, $2::uuid[])`, [s3Id, `{${A},${B},${C}}`]);
+await db.query(`select public.start_season($1)`, [s3Id]);
+
+// Non-member D cannot see matches
+await asUser(D);
+check("non-member cannot see matches", (await db.query(`select id from public.matches where league_id = $1`, [leagueId])).rows.length === 0);
+
+// Player C cannot create matches or generate fixtures
+await asUser(C);
+await mustFail("player cannot create a match", () =>
+  db.query(`select public.create_match($1, $2, $3, 1, null)`, [s3Id, A, B]),
+);
+await mustFail("player cannot generate round-robin fixtures", () =>
+  db.query(`select public.generate_round_robin_fixtures($1, false, null, 7)`, [s3Id]),
+);
+
+// Manager A validates distinct players & season participants
+await asUser(A);
+await mustFail("cannot create match with same player twice", () =>
+  db.query(`select public.create_match($1, $2, $2, 1, null)`, [s3Id, A]),
+);
+await mustFail("cannot create match with non-participant", () =>
+  db.query(`select public.create_match($1, $2, $3, 1, null)`, [s3Id, A, D]),
+);
+
+// Single round-robin for 3 players -> 3 matches across 3 rounds
+const rr3Count = Number(
+  (await one(`select public.generate_round_robin_fixtures($1, false, '2026-12-01T18:00:00Z'::timestamptz, 7) as n`, [s3Id])).n,
+);
+check("3-player single round-robin creates 3 matches", rr3Count === 3, `count=${rr3Count}`);
+
+// Cannot regenerate fixtures while active matches exist
+await mustFail("blocks duplicate fixture generation while active matches exist", () =>
+  db.query(`select public.generate_round_robin_fixtures($1, false, null, 7)`, [s3Id]),
+);
+
+// Create a single match, reschedule it, then cancel it
+const extraMatchId = (await one(`select public.create_match($1, $2, $3, 4, null) as id`, [s3Id, A, B])).id;
+await db.query(`select public.update_match_schedule($1, 5, '2026-12-20T19:00:00Z'::timestamptz)`, [extraMatchId]);
+const rescheduled = await one(`select round, scheduled_at from public.matches where id = $1`, [extraMatchId]);
+check("manager can reschedule scheduled match", rescheduled?.round === 5 && rescheduled?.scheduled_at !== null);
+
+await asUser(C);
+await mustFail("player cannot reschedule match", () =>
+  db.query(`select public.update_match_schedule($1, 6, null)`, [extraMatchId]),
+);
+await mustFail("player cannot cancel match", () =>
+  db.query(`select public.cancel_match($1)`, [extraMatchId]),
+);
+
+await asUser(A);
+await db.query(`select public.cancel_match($1)`, [extraMatchId]);
+check("manager can cancel scheduled match", (await one(`select status from public.matches where id = $1`, [extraMatchId])).status === "cancelled");
+await mustFail("cannot reschedule a cancelled match", () =>
+  db.query(`select public.update_match_schedule($1, 6, null)`, [extraMatchId]),
+);
+
+// Double round-robin for 4 players -> 12 matches across 6 rounds
+await db.query(`select public.complete_season($1, $2)`, [s3Id, A]);
+await mustFail("cannot create match in completed season", () =>
+  db.query(`select public.create_match($1, $2, $3, 1, null)`, [s3Id, A, B]),
+);
+
+await asUser(B);
+await db.exec(`reset role;`);
+// Add D as league member for 4-player double round-robin test
+await db.query(`insert into public.league_members (league_id, user_id, role) values ($1, $2, 'player')`, [leagueId, D]);
+await asUser(A);
+const s4Id = (await one(`select public.create_season($1, 'Winter Cup', $2::uuid[]) as id`, [leagueId, `{${A},${B},${C},${D}}`])).id;
+const rr4Double = Number(
+  (await one(`select public.generate_round_robin_fixtures($1, true, '2026-12-05T20:00:00Z'::timestamptz, 3) as n`, [s4Id])).n,
+);
+const distinctRounds = Number((await one(`select count(distinct round) c from public.matches where season_id = $1`, [s4Id])).c);
+check("4-player double round-robin creates 12 matches across 6 rounds", rr4Double === 12 && distinctRounds === 6, `matches=${rr4Double},rounds=${distinctRounds}`);
+
 console.log(failures ? `\n${failures} check(s) FAILED` : "\nAll checks passed");
 process.exit(failures ? 1 : 0);

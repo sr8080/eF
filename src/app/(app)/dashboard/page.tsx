@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { Camera, CircleCheck, Link2, Plus, Trophy, UserRound } from "lucide-react";
+import { Camera, CircleCheck, Link2, Plus, Swords, Trophy, UserRound } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { getUserLeagues } from "@/lib/leagues";
+import { getUserMatches } from "@/lib/matches";
 import { EmptyState, PageContainer, PageHeader } from "@/components/layout/page-header";
 import { FormAlert } from "@/components/forms/form-fields";
 import { LeagueCard } from "@/components/leagues/league-card";
+import { MatchCard } from "@/components/matches/match-card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UserAvatar } from "@/components/user/user-avatar";
@@ -24,13 +26,18 @@ export default function DashboardPage({ searchParams }: PageProps<"/dashboard">)
 }
 
 async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard">["searchParams"] }) {
-  const [{ profile }, leagues, params] = await Promise.all([
+  const [user, leagues, matches, params] = await Promise.all([
     requireUser("/dashboard"),
     getUserLeagues(),
+    getUserMatches(),
     searchParams,
   ]);
+  const { profile } = user;
   const firstName = profile.display_name.split(" ")[0];
   const visibleLeagues = leagues.slice(0, 5);
+  const openMatches = matches
+    .filter((m) => m.displayStatus !== "confirmed" && m.displayStatus !== "cancelled")
+    .slice(0, 4);
 
   const checklist = [
     { done: true, label: "Create your account", href: null, icon: UserRound },
@@ -67,45 +74,77 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<"/dashboard
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <section className="lg:col-span-2" aria-labelledby="leagues-heading">
-          <div className="mb-3 flex items-center justify-between">
-            <h2
-              id="leagues-heading"
-              className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
-            >
-              Your leagues
-            </h2>
-            {leagues.length > 0 && (
-              <Link href="/leagues" className="text-xs font-medium text-info hover:underline">
-                View all ({leagues.length})
-              </Link>
-            )}
-          </div>
-
-          {leagues.length === 0 ? (
-            <EmptyState
-              icon={<Trophy />}
-              title="You’re not in a league yet"
-              description="Create a league for your crew or join one using an invite code."
-              action={
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Button asChild>
-                    <Link href="/leagues/new">Create league</Link>
-                  </Button>
-                  <Button asChild variant="outline">
-                    <Link href="/join">Join with code</Link>
-                  </Button>
-                </div>
-              }
-            />
-          ) : (
-            <div className="space-y-3">
-              {visibleLeagues.map((item) => (
-                <LeagueCard key={item.league.id} item={item} />
-              ))}
+        <div className="space-y-6 lg:col-span-2">
+          <section aria-labelledby="leagues-heading">
+            <div className="mb-3 flex items-center justify-between">
+              <h2
+                id="leagues-heading"
+                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Your leagues
+              </h2>
+              {leagues.length > 0 && (
+                <Link href="/leagues" className="text-xs font-medium text-info hover:underline">
+                  View all ({leagues.length})
+                </Link>
+              )}
             </div>
-          )}
-        </section>
+
+            {leagues.length === 0 ? (
+              <EmptyState
+                icon={<Trophy />}
+                title="You’re not in a league yet"
+                description="Create a league for your crew or join one using an invite code."
+                action={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button asChild>
+                      <Link href="/leagues/new">Create league</Link>
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href="/join">Join with code</Link>
+                    </Button>
+                  </div>
+                }
+              />
+            ) : (
+              <div className="space-y-3">
+                {visibleLeagues.map((item) => (
+                  <LeagueCard key={item.league.id} item={item} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section aria-labelledby="upcoming-matches-heading">
+            <div className="mb-3 flex items-center justify-between">
+              <h2
+                id="upcoming-matches-heading"
+                className="text-sm font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Upcoming matches
+              </h2>
+              {matches.length > 0 && (
+                <Link href="/matches" className="text-xs font-medium text-info hover:underline">
+                  View all ({matches.length})
+                </Link>
+              )}
+            </div>
+
+            {openMatches.length === 0 ? (
+              <EmptyState
+                icon={<Swords />}
+                title="No upcoming matches"
+                description="When fixtures are scheduled in your leagues, your upcoming matches will appear here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {openMatches.map((item) => (
+                  <MatchCard key={item.match.id} item={item} showLeague currentUserId={user.id} />
+                ))}
+              </div>
+            )}
+          </section>
+        </div>
 
         <section aria-labelledby="profile-heading" className="h-fit rounded-xl border bg-card p-4">
           <h2 id="profile-heading" className="sr-only">

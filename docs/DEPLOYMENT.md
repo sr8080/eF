@@ -18,6 +18,7 @@ Apply every file in `supabase/migrations/` **in filename order**:
 2. `20261126000001_phase2_schema_and_rls.sql` — leagues, members, seasons, matches, submissions, results, screenshots, disputes, notifications, achievements, RLS and security helpers
 3. `20261126000002_league_operations_and_storage.sql` — atomic league RPC functions plus `league-logos` and `match-screenshots` buckets/policies
 4. `20261127000001_phase3_seasons_and_players.sql` — season lifecycle and participant management RPCs
+5. `20261127000002_phase4_matches_and_fixtures.sql` — match scheduling, round-robin fixture generation, reschedule & cancel RPCs
 
 **Option A: SQL editor (no tools needed).** Open *SQL Editor → New query*, paste
 the file contents, run. Repeat for each file in order.
